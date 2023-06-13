@@ -2991,6 +2991,7 @@ ipp_create_xxx_subscriptions(
   int			num_subs = 0,	/* Number of subscriptions */
 			ok_subs = 0;	/* Number of good subscriptions */
 
+  serverLog(SERVER_LOGLEVEL_DEBUG, "ipp_create_xxx_subscriptions:");
 
   if (Authentication && !client->username[0])
   {
@@ -5137,6 +5138,8 @@ ipp_get_subscriptions(
     username = "anonymous";
 
   serverRespondIPP(client, IPP_STATUS_OK, NULL);
+
+  serverDeleteExpiredSubscriptions();
 
   cupsRWLockRead(&SubscriptionsRWLock);
 
@@ -8850,6 +8853,7 @@ serverProcessIPP(
     }
     else if (!charset || !language || !uri)
     {
+  serverLog(SERVER_LOGLEVEL_DEBUG, "error1: charset = %p, lang = %p, uri = %p", charset, language, uri);
      /*
       * Return an error, since attributes-charset,
       * attributes-natural-language, and printer-uri/job-uri are required
@@ -8867,6 +8871,8 @@ serverProcessIPP(
 		resource[256],		/* Resource path in URI */
 		*resptr;		/* Pointer into resource path */
       int	port;			/* Port number in URI */
+
+  serverLog(SERVER_LOGLEVEL_DEBUG, "look at URI");
 
       name            = ippGetName(uri);
       client->printer = NULL;
@@ -8924,6 +8930,7 @@ serverProcessIPP(
        /*
 	* Try processing the Printer operation...
 	*/
+  serverLog(SERVER_LOGLEVEL_DEBUG, "processing printer op");
 
 	switch ((int)ippGetOperation(client->request))
 	{

@@ -156,6 +156,9 @@ serverCreateSubscription(
   char			uuid[64];	/* notify-subscription-uuid value */
   char			uri[1024];	/* URI */
 
+  /* Delete any expired subscriptions */
+  serverDeleteExpiredSubscriptions();
+
 
  /*
   * Allocate and initialize the subscription object...
@@ -271,6 +274,53 @@ serverCreateSubscription(
   return (sub);
 }
 
+void
+serverDeleteExpiredSubscriptions()
+{
+  server_subscription_t	*sub;		/* Current subscription */
+  size_t		i;		/* Looping var */
+  size_t		count = 0;	/* Number of subscriptions reported */
+  cups_array_t	*expired_subscriptions = NULL;
+
+  if (!Subscriptions) {
+    return;
+  }
+
+/* go thru each subscription and check on expiry,
+ * if expired then delete the subscription
+ */
+  cupsRWLockRead(&SubscriptionsRWLock);
+
+  expired_subscriptions = cupsArrayNew((cups_array_cb_t)compare_subscriptions, NULL, NULL, 0, NULL, NULL);
+
+  count = cupsArrayGetCount(Subscriptions);
+  // find expired subscriptions
+  for (i = 0; i < count; i++) {
+    sub = (server_subscription_t *)cupsArrayGetElement(Subscriptions, i);
+    serverLog(SERVER_LOGLEVEL_DEBUG, "Looking at subscription id=%d, expire=%lu", sub->id, sub->expire);
+  
+    if (time(NULL) > sub->expire) {
+      serverLog(SERVER_LOGLEVEL_DEBUG, "Note expired subscription id=%d, expire=%lu", sub->id, sub->expire);
+      cupsArrayAdd(expired_subscriptions, sub);
+    }
+
+  }
+  cupsRWUnlock(&SubscriptionsRWLock);
+
+  count = cupsArrayGetCount(expired_subscriptions);
+  cupsRWLockWrite(&SubscriptionsRWLock);
+  for (i = 0; i < count; i++) {
+    sub = (server_subscription_t *)cupsArrayGetElement(expired_subscriptions, i);
+    serverLog(SERVER_LOGLEVEL_DEBUG, "Deleting expired subscription id=%d, expire=%lu", sub->id, sub->expire);
+
+    cupsArrayRemove(Subscriptions, sub);
+    serverDeleteSubscription(sub);
+  }
+  cupsRWUnlock(&SubscriptionsRWLock);
+
+  cupsArrayDelete(expired_subscriptions);
+
+}
 
 /*
  * 'serverDeleteSubscription()' - Delete a subscription.
@@ -319,6 +369,10 @@ serverFindSubscription(
     return (NULL);
   else
     key.id = ippGetInteger(notify_subscription_id, 0);
+
+  serverLogClient(SERVER_LOGLEVEL_DEBUG, client, "serverFindSubscription: using sub_id=%d", key.id);
+
+  serverDeleteExpiredSubscriptions();
 
   cupsRWLockRead(&SubscriptionsRWLock);
   sub = (server_subscription_t *)cupsArrayFind(Subscriptions, &key);
